@@ -23,9 +23,10 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
   @Input({ required: true }) videoUrl!: SafeResourceUrl;
 
   @ViewChild('videoStage') videoStageRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('videoWrapper') videoWrapperRef!: ElementRef<HTMLDivElement>;
   @ViewChild('videoEl') videoElRef!: ElementRef<HTMLVideoElement>;
   @ViewChild('canvasEl') canvasElRef!: ElementRef<HTMLCanvasElement>;
-  @ViewChild('drawMenuWrapper') drawMenuWrapperRef?: ElementRef<HTMLDivElement>;
+  @ViewChild('controlsBar') controlsBarRef!: ElementRef<HTMLDivElement>;
 
   isPlaying = false;
   currentTime = 0;
@@ -33,17 +34,34 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
   playbackRate = 1;
   isDrawMode = false;
   isFullscreen = false;
-  showDrawMenu = false;
-  showSymbolsMenu = false;
+  isToolbarOpen = false;
+  isSymbolPopupOpen = false;
+  showVolumeSlider = false;
+  isZoomMode = false;
+  isZoomed = false;
+  isFullscreenNotesOpen = false;
+  showZoomPresetMenu = false;
+  zoomSelectionActive = false;
+  zoomSelectionCenter: DrawPoint | null = null;
+  activeZoomScale: number | null = null;
+  activeZoomBoxSize = 0;
+  zoomScale = 1;
+  zoomOffsetX = 0;
+  zoomOffsetY = 0;
+  volume = 1;
+  isMuted = false;
   currentTool: DrawTool = 'pen';
 
   strokes: Stroke[] = [];
   redoStack: Stroke[] = [];
   notes: Note[] = [];
   flags: Flag[] = [];
+  annotationItems: Array<{ id: string; timestamp: number; text: string }> = [];
   newNoteText = '';
+  lastAnnotationMessage = '';
 
   private resizeObserver: ResizeObserver | null = null;
+  private controlsResizeObserver: ResizeObserver | null = null;
   private isDrawing = false;
   private strokeStart: DrawPoint | null = null;
   private currentStroke: Stroke | null = null;
@@ -57,13 +75,39 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     this.resizeObserver = new ResizeObserver(() => this.syncCanvasSize());
     this.resizeObserver.observe(this.videoElRef.nativeElement);
     this.syncCanvasSize();
+    this.syncAnnotations();
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
+    // Observe controls bar size to dynamically compute panel bottom offset
+    try {
+      this.controlsResizeObserver = new ResizeObserver(() => this.updateControlsHeight());
+      if (this.controlsBarRef && this.controlsBarRef.nativeElement) this.controlsResizeObserver.observe(this.controlsBarRef.nativeElement);
+    } catch (e) {
+      // ResizeObserver not supported - fallback to window resize listener
+      window.addEventListener('resize', this.updateControlsHeight);
+    }
+    // Initial update
+    setTimeout(() => this.updateControlsHeight(), 50);
   }
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    this.controlsResizeObserver?.disconnect();
+    try { window.removeEventListener('resize', this.updateControlsHeight); } catch {}
   }
+
+  updateControlsHeight = () => {
+    try {
+      const el = this.controlsBarRef?.nativeElement;
+      const h = el ? el.getBoundingClientRect().height : 72;
+      // set CSS variable on the stage element so CSS can use it for panel bottom/height
+      if (this.videoStageRef && this.videoStageRef.nativeElement) {
+        this.videoStageRef.nativeElement.style.setProperty('--controls-height', `${h}px`);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
 
   private syncCanvasSize() {
     const video = this.videoElRef.nativeElement;
@@ -77,6 +121,66 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
   togglePlay() {
     const video = this.videoElRef.nativeElement;
     video.paused ? video.play() : video.pause();
+  }
+
+  get videoTransform() {
+    return `translate(${this.zoomOffsetX}px, ${this.zoomOffsetY}px) scale(${this.zoomScale})`;
+  }
+
+  get zoomSelectionLeft(): number {
+    if (!this.zoomSelectionCenter) return 0;
+    return this.zoomSelectionCenter.x - this.activeZoomBoxSize / 2;
+  }
+
+  get zoomSelectionTop(): number {
+    if (!this.zoomSelectionCenter) return 0;
+    return this.zoomSelectionCenter.y - this.activeZoomBoxSize / 2;
+  }
+
+  getZoomPresetSquareSize(zoomScale: number): number {
+    if (zoomScale >= 3.5) return 200;
+    if (zoomScale >= 3) return 300;
+    return 350;
+  }
+
+  toggleZoomMode(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.showZoomPresetMenu = !this.showZoomPresetMenu;
+    if (!this.showZoomPresetMenu) {
+      this.isZoomMode = false;
+      this.zoomSelectionActive = false;
+      this.zoomSelectionCenter = null;
+    }
+    this.isDrawMode = false;
+    this.isToolbarOpen = false;
+    this.isSymbolPopupOpen = false;
+    this.cdr.markForCheck();
+  }
+
+  selectZoomPreset(zoomScale: number, event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.activeZoomScale = zoomScale;
+    this.activeZoomBoxSize = this.getZoomPresetSquareSize(zoomScale);
+    this.showZoomPresetMenu = false;
+    this.isZoomMode = true;
+    this.zoomSelectionActive = true;
+    this.zoomSelectionCenter = null;
+    this.cdr.markForCheck();
+  }
+
+  resetZoom(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.zoomScale = 1;
+    this.zoomOffsetX = 0;
+    this.zoomOffsetY = 0;
+    this.isZoomMode = false;
+    this.isZoomed = false;
+    this.showZoomPresetMenu = false;
+    this.zoomSelectionActive = false;
+    this.zoomSelectionCenter = null;
+    this.activeZoomScale = null;
+    this.activeZoomBoxSize = 0;
+    this.cdr.markForCheck();
   }
   onPlay() { this.isPlaying = true; this.cdr.markForCheck(); }
   onPause() { this.isPlaying = false; this.cdr.markForCheck(); }
@@ -94,6 +198,34 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     this.playbackRate = rate;
     this.videoElRef.nativeElement.playbackRate = rate;
   }
+  setVolume(value: number) {
+    const video = this.videoElRef.nativeElement;
+    this.volume = Math.max(0, Math.min(1, value));
+    video.volume = this.volume;
+    this.isMuted = this.volume === 0 || video.muted;
+    video.muted = this.volume === 0;
+    this.cdr.markForCheck();
+  }
+  toggleMute(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    const video = this.videoElRef.nativeElement;
+    if (video.muted || this.volume === 0) {
+      this.volume = Math.max(this.volume, 0.25);
+      video.volume = this.volume;
+      video.muted = false;
+      this.isMuted = false;
+    } else {
+      video.muted = true;
+      this.isMuted = true;
+    }
+    this.showVolumeSlider = true;
+    this.cdr.markForCheck();
+  }
+  toggleVolumeSlider(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.showVolumeSlider = !this.showVolumeSlider;
+    this.cdr.markForCheck();
+  }
   stepFrame(direction: 1 | -1) {
     const video = this.videoElRef.nativeElement;
     video.pause();
@@ -101,35 +233,29 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     video.currentTime = Math.min(Math.max(video.currentTime + direction * FRAME_DURATION, 0), this.duration);
   }
 
-  // ---- Draw menu (popup above the Draw button) ----
-  toggleDrawMenu() {
-    this.showDrawMenu = !this.showDrawMenu;
-    this.isDrawMode = this.showDrawMenu;
-    if (!this.showDrawMenu) this.showSymbolsMenu = false;
+  // ---- Draw controls (compact overlay above the Draw button) ----
+  toggleDrawMenu(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.isToolbarOpen = !this.isToolbarOpen;
+    this.isDrawMode = this.isToolbarOpen;
+    if (!this.isToolbarOpen) {
+      this.isSymbolPopupOpen = false;
+    }
     if (this.isDrawMode) this.videoElRef.nativeElement.pause();
     this.cdr.markForCheck();
   }
 
-  toggleSymbolsMenu() {
-    this.showSymbolsMenu = !this.showSymbolsMenu;
-  }
-
-  selectTool(tool: DrawTool) {
-    this.currentTool = tool;
-    this.showSymbolsMenu = false;
-    this.showDrawMenu = false;   // close menu, cursor is now ready to draw
+  toggleSymbolsMenu(event?: MouseEvent) {
+    if (!this.isToolbarOpen) return;
+    if (event) event.stopPropagation();
+    this.isSymbolPopupOpen = !this.isSymbolPopupOpen;
     this.cdr.markForCheck();
   }
 
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: MouseEvent) {
-    if (!this.showDrawMenu) return;
-    const target = event.target as HTMLElement;
-    if (!this.drawMenuWrapperRef?.nativeElement.contains(target)) {
-      this.showDrawMenu = false;
-      this.showSymbolsMenu = false;
-      this.cdr.markForCheck();
-    }
+  selectTool(tool: DrawTool, event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    this.currentTool = tool;
+    this.cdr.markForCheck();
   }
 
   // ---- Drawing (pen = freehand path, shapes = two-point bounding box) ----
@@ -139,6 +265,75 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     const point = this.toNormalizedPoint(event);
     this.strokeStart = point;
     this.currentStroke = { tool: this.currentTool, points: [point] };
+  }
+
+  onZoomPointerDown(event: PointerEvent) {
+    if (!this.isZoomMode || !this.activeZoomBoxSize) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.zoomSelectionCenter = this.toVideoPoint(event);
+    this.applyZoomSelection(this.zoomSelectionCenter);
+    this.zoomSelectionActive = false;
+    this.isZoomMode = false;
+    this.isZoomed = true;
+    this.showZoomPresetMenu = false;
+    this.cdr.markForCheck();
+  }
+
+  onZoomPointerMove(event: PointerEvent) {
+    if (!this.isZoomMode || !this.zoomSelectionActive) return;
+    this.zoomSelectionCenter = this.toVideoPoint(event);
+    this.cdr.markForCheck();
+  }
+
+  onZoomPointerLeave() {
+    if (!this.isZoomMode || !this.zoomSelectionActive) return;
+    this.zoomSelectionActive = false;
+    this.zoomSelectionCenter = null;
+    this.cdr.markForCheck();
+  }
+
+  private getDisplayedVideoFrame() {
+    const video = this.videoElRef.nativeElement;
+    const wrapper = this.videoWrapperRef?.nativeElement;
+    const rect = wrapper ? wrapper.getBoundingClientRect() : video.getBoundingClientRect();
+    const naturalWidth = video.videoWidth || rect.width;
+    const naturalHeight = video.videoHeight || rect.height;
+    const objectFit = window.getComputedStyle(video).objectFit || 'cover';
+    const scale = objectFit === 'contain'
+      ? Math.min(rect.width / naturalWidth, rect.height / naturalHeight)
+      : Math.max(rect.width / naturalWidth, rect.height / naturalHeight);
+    const width = naturalWidth * scale;
+    const height = naturalHeight * scale;
+    return {
+      width,
+      height,
+      left: rect.left + (rect.width - width) / 2,
+      top: rect.top + (rect.height - height) / 2
+    };
+  }
+
+  private toVideoPoint(event: PointerEvent): DrawPoint {
+    const frame = this.getDisplayedVideoFrame();
+    return {
+      x: Math.min(Math.max(event.clientX - frame.left, 0), frame.width),
+      y: Math.min(Math.max(event.clientY - frame.top, 0), frame.height)
+    };
+  }
+
+  private applyZoomSelection(center: DrawPoint) {
+    const video = this.videoElRef.nativeElement;
+    const frame = this.getDisplayedVideoFrame();
+    const squareSize = Math.max(this.activeZoomBoxSize, 20);
+    const scale = Math.min(frame.width / squareSize, frame.height / squareSize);
+    const tx = (frame.width / 2 - center.x) * (scale - 1);
+    const ty = (frame.height / 2 - center.y) * (scale - 1);
+    this.zoomScale = parseFloat(scale.toFixed(4));
+    this.zoomOffsetX = parseFloat(tx.toFixed(2));
+    this.zoomOffsetY = parseFloat(ty.toFixed(2));
+    if (video) {
+      video.style.setProperty('transform-origin', 'center center');
+    }
   }
 
   onPointerMove(event: PointerEvent) {
@@ -164,15 +359,18 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     this.isDrawing = false;
   }
 
-  undo() {
+  undo(event?: MouseEvent) {
+    if (event) event.stopPropagation();
     const last = this.strokes.pop();
     if (last) { this.redoStack.push(last); this.redrawStrokes(); this.cdr.markForCheck(); }
   }
-  redo() {
+  redo(event?: MouseEvent) {
+    if (event) event.stopPropagation();
     const restored = this.redoStack.pop();
     if (restored) { this.strokes.push(restored); this.redrawStrokes(); this.cdr.markForCheck(); }
   }
-  clearDrawing() {
+  clearDrawing(event?: MouseEvent) {
+    if (event) event.stopPropagation();
     this.strokes = [];
     this.redoStack = [];
     this.redrawStrokes();
@@ -256,23 +454,50 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // ---- Notes ----
-  addNote() {
-    if (!this.newNoteText.trim()) return;
-    this.notes.push({ id: crypto.randomUUID(), timestamp: this.currentTime, text: this.newNoteText.trim() });
-    this.notes.sort((a, b) => a.timestamp - b.timestamp);
-    this.newNoteText = '';
+  private genId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
   }
-  removeNote(id: string) { this.notes = this.notes.filter(n => n.id !== id); }
+
+  // ---- Notes ----
+  addNote(event?: Event) {
+    event?.preventDefault();
+    const trimmed = this.newNoteText.trim();
+    if (!trimmed) {
+      console.debug('addNote skipped: empty input');
+      return;
+    }
+    const newNote: Note = { id: this.genId(), timestamp: this.currentTime, text: trimmed };
+    this.notes = [...this.notes, newNote].sort((a, b) => a.timestamp - b.timestamp);
+    this.syncAnnotations();
+    this.newNoteText = '';
+    this.lastAnnotationMessage = `Added note at ${this.formatTime(newNote.timestamp)}`;
+    this.cdr.markForCheck();
+    console.log('addNote fired', { note: newNote, notes: this.notes, annotationItems: this.annotationItems });
+  }
+  removeNote(id: string) {
+    this.notes = this.notes.filter(n => n.id !== id);
+    this.syncAnnotations();
+    this.cdr.markForCheck();
+  }
 
   // ---- Flags ----
-  addFlag() {
-    this.flags.push({ id: crypto.randomUUID(), timestamp: this.currentTime });
-    this.flags.sort((a, b) => a.timestamp - b.timestamp);
+  addFlag(event?: Event) {
+    event?.preventDefault();
+    const newFlag: Flag = { id: this.genId(), timestamp: this.currentTime };
+    this.flags = [...this.flags, newFlag].sort((a, b) => a.timestamp - b.timestamp);
+    this.syncAnnotations();
+    this.lastAnnotationMessage = `Added flag at ${this.formatTime(newFlag.timestamp)}`;
+    this.isFullscreenNotesOpen = this.isFullscreen ? true : this.isFullscreenNotesOpen;
     this.cdr.markForCheck();
+    console.log('addFlag fired', { flag: newFlag, flags: this.flags, annotationItems: this.annotationItems });
   }
   removeFlag(id: string) {
     this.flags = this.flags.filter(f => f.id !== id);
+    this.syncAnnotations();
+    this.cdr.markForCheck();
   }
   flagPosition(timestamp: number): number {
     return this.duration > 0 ? (timestamp / this.duration) * 100 : 0;
@@ -294,8 +519,24 @@ export class VideoReviewComponent implements AfterViewInit, OnDestroy {
   }
   private onFullscreenChange = () => {
     this.isFullscreen = !!document.fullscreenElement;
+    // Auto-open the notes panel whenever entering fullscreen; close on exit
+    this.isFullscreenNotesOpen = this.isFullscreen ? true : false;
     this.cdr.markForCheck();
   };
+
+  toggleFullscreenNotes(event?: MouseEvent) {
+    if (event) event.stopPropagation();
+    // If not in fullscreen, ignore
+    if (!this.isFullscreen) return;
+    this.isFullscreenNotesOpen = !this.isFullscreenNotesOpen;
+    this.cdr.markForCheck();
+  }
+
+  private syncAnnotations() {
+    const noteItems = this.notes.map(n => ({ id: n.id, timestamp: n.timestamp, text: n.text || '' }));
+    const flagItems = this.flags.map(f => ({ id: f.id, timestamp: f.timestamp, text: '' }));
+    this.annotationItems = [...noteItems, ...flagItems].sort((a, b) => a.timestamp - b.timestamp);
+  }
 
   // ---- Keyboard shortcuts ----
   @HostListener('window:keydown', ['$event'])
