@@ -4,6 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "sh dev.sh",
-    "build": "cd video-uploader-app && pnpm exec ng build"
+    "build": "pnpm run build"
   }
 }
