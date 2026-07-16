@@ -1,11 +1,27 @@
 :host {
   display: block;
   min-height: 100vh;
-  background: var(--bg-primary);
+  position: relative;
+  background-color: var(--bg-primary);
+  background-image: url('/landing-bg.jpg');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
   color: var(--text-primary);
+  overflow: hidden;
+}
+
+:host::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 7, 15, 0.55);
+  pointer-events: none;
 }
 
 .landing-shell {
+  position: relative;
+  z-index: 1;
   width: 100%;
   padding: clamp(2rem, 6vw, 5rem) clamp(1.5rem, 8vw, 8rem);
 }

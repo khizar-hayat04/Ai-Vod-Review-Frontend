@@ -26,6 +26,9 @@ importers:
       '@angular/router':
         specifier: ^20.3.0
         version: 20.3.25(@angular/common@20.3.25(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.25(@angular/common@20.3.25(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
+      p5:
+        specifier: ^1.9.4
+        version: 1.11.13
       rxjs:
         specifier: ~7.8.0
         version: 7.8.2
@@ -48,6 +51,9 @@ importers:
       '@types/jasmine':
         specifier: ~5.1.0
         version: 5.1.15
+      '@types/p5':
+        specifier: ^1.7.7
+        version: 1.7.7
       jasmine-core:
         specifier: ~5.9.0
         version: 5.9.0
@@ -1189,6 +1195,9 @@ packages:
   '@types/node@26.1.0':
     resolution: {integrity: sha512-O0A1G3xPGy4w7AgQdAQYUlQ+BKk2Oovw8eRpofyp5KdBZULnbe+WqaOVNrm705SHphCiG4XHsACrSmPu1f+Kgw==}
 
+  '@types/p5@1.7.7':
+    resolution: {integrity: sha512-WFuP7jqc5CkkMtCK/NphgvMnJz1Qi9CMuK7t6xLu/tuXkRdGQA4q4AD0dUYcChC0Oibe8PE8gbKSFPNF0BqVNw==}
+
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
@@ -2207,6 +2216,9 @@ packages:
   p-map@7.0.5:
     resolution: {integrity: sha512-e8vJF4XdVkzqqSHguEMz41mQO1wKwxKm5ENrUJQUu9kLDCtn83cxbyHZcszr4QC5zEA7WffRRC4gsTecC7J9oA==}
     engines: {node: '>=18'}
+
+  p5@1.11.13:
+    resolution: {integrity: sha512-gfGo4AkyuNMs6Ko7UNFM9K2edqFRGyLrFaYUB+XXF127JVdEPu0BIaC5uDDNJpsRMOD9hJMUpsOH4HkfuNhvhA==}
 
   pacote@21.5.1:
     resolution: {integrity: sha512-KvcJ9iy3crysCsgqc4+PknH/w6jkrp8JN36mpZBPwNaDRwTfMZD37YzRazNstiZUOhuF5pno9f78n9mEJBavwg==}
@@ -3768,6 +3780,8 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/p5@1.7.7': {}
+
   '@types/ws@8.18.1':
     dependencies:
       '@types/node': 26.1.0
@@ -4918,6 +4932,8 @@ snapshots:
     optional: true
 
   p-map@7.0.5: {}
+
+  p5@1.11.13: {}
 
   pacote@21.5.1:
     dependencies:

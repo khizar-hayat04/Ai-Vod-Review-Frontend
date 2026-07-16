@@ -1,7 +1,7 @@
 :host {
   display: block;
   min-height: 100vh;
-  background: var(--bg-primary);
+  background: linear-gradient(rgba(9, 12, 20, 0.55), rgba(9, 12, 20, 0.55)), url('/landing-bg-Guest.jpg') no-repeat center/cover;
   color: var(--text-primary);
 }
 
